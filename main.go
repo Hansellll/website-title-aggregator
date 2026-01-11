@@ -133,6 +133,11 @@ func fetchContent(urls <-chan string, workers int) <-chan Article {
 	out := make(chan Article)
 	var wg sync.WaitGroup
 
+	// HTTP client with timeout to prevent hanging on unresponsive servers
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
 	// Launch worker goroutines
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -140,7 +145,7 @@ func fetchContent(urls <-chan string, workers int) <-chan Article {
 			defer wg.Done()
 			for url := range urls {
 				// Just fetch, no worker ID needed
-				resp, err := http.Get(url)
+				resp, err := client.Get(url)
 				if err != nil {
 					fmt.Printf("Error fetching %s: %v\n", url, err)
 					continue
