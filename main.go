@@ -77,8 +77,8 @@ func main() {
 
 	// Build pipeline
 	urlChan := generateUrls(urls)
-	articleChan := fetchContent(urlChan, workers) //
-	titledChan := extractTitles(articleChan)
+	articleChan := fetchContent(urlChan, workers)
+	titledChan := extractTitles(articleChan, workers)
 	display(titledChan)
 
 	fmt.Printf("Completed in %v\n", time.Since(start))
@@ -167,25 +167,38 @@ func fetchContent(urls <-chan string, workers int) <-chan Article {
 
 //STAGE THREE
 
-// Find all titles in body of webpage
-func extractTitles(articles <-chan Article) <-chan Article {
+// Find all titles in body of webpage using a worker pool
+func extractTitles(articles <-chan Article, workers int) <-chan Article {
 	out := make(chan Article)
-	go func() {
-		for article := range articles {
-			start := strings.Index(article.Body, "<title>")
-			end := strings.Index(article.Body, "</title>")
+	var wg sync.WaitGroup
 
-			// Check that both tags exist AND are in correct order
-			if start != -1 && end != -1 && start < end {
-				article.Title = article.Body[start+7 : end]
-			} else {
-				article.Title = "No title found"
+	// Launch worker goroutines for title extraction
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for article := range articles {
+				start := strings.Index(article.Body, "<title>")
+				end := strings.Index(article.Body, "</title>")
+
+				// Check that both tags exist AND are in correct order
+				if start != -1 && end != -1 && start < end {
+					article.Title = article.Body[start+7 : end]
+				} else {
+					article.Title = "No title found"
+				}
+
+				out <- article
 			}
+		}()
+	}
 
-			out <- article
-		}
+	// Close output channel when all workers are done
+	go func() {
+		wg.Wait()
 		close(out)
 	}()
+
 	return out
 }
 
